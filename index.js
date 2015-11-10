@@ -1,12 +1,60 @@
 /**
  * @constructor
  */
-Notes = function() {
+appStorage = function(storageKey) {
+
   /**
    * @type {string}
    */
-  this.__STORAGE_KEY = 'note-item';
+  this.__storageKey = storageKey;
+};
 
+
+/**
+ * @param {!Object} payload
+ */
+appStorage.prototype.saveStorage = function(payload) {
+  localStorage.setItem(this.__storageKey, JSON.stringify(payload));
+};
+
+
+/**
+ * @return {Array}
+ */
+appStorage.prototype.restoreData = function() {
+  var data = localStorage.getItem(this.__storageKey);
+  if (data) {
+    return JSON.parse(data)
+  }
+  return [];
+};
+
+
+/**
+ */
+appStorage.prototype.removeData = function() {
+  localStorage.removeItem(this.__storageKey);
+};
+
+
+/**
+ */
+appStorage.prototype.listenerStorage = function(callback) {
+  var self = this;
+  window.addEventListener('storage', handleStorage, false);
+  function handleStorage(event) {
+    if (event.key === self.__storageKey) {
+      callback(event);
+    }
+  }
+};
+
+
+
+/**
+ * @constructor
+ */
+Notes = function() {
   this.__pageForm = {
     'name': document.querySelector('#note_name') || null,
     'text': document.querySelector('#note_text') || null,
@@ -16,11 +64,12 @@ Notes = function() {
     'noteSearch': document.querySelector('#note_search') || null
   };
 
+  this.__storage = new appStorage('note-item');
 
   /**
    * @type {Array}
    */
-  this.__notesList = this.__restoreData(this.__STORAGE_KEY) || [];
+  this.__notesList = this.__storage.restoreData() || [];
 
 
   this.__init();
@@ -52,7 +101,7 @@ Notes.prototype.__handlers = function(form) {
         'text': noteText
       };
       self.__addNote(self.__notesList, newNote);
-      self.__saveStorage(self.__STORAGE_KEY, self.__notesList);
+      self.__storage.saveStorage(self.__notesList);
       form.notesWrap.appendChild(self.__createNodeItem(newNote));
       form.name.value = '';
       form.text.value = '';
@@ -62,20 +111,18 @@ Notes.prototype.__handlers = function(form) {
   function handleDeleteAllBtn() {
     self.__clearNotes(form.notesWrap);
     self.__notesList = [];
-    self.__removeData(self.__STORAGE_KEY);
+    self.__storage.removeData();
   }
 
-  function handleStorage(event) {
-    if (event.key === self.__STORAGE_KEY) {
-      self.__notesList = self.__updateNoteList();
-      self.__drawNotes(self.__notesList, form.notesWrap);
-    }
+  function handleStorage() {
+    self.__notesList = self.__updateNoteList();
+    self.__drawNotes(self.__notesList, form.notesWrap);
   }
 
   function handleDeleteBtn(event) {
     var id = event.target.parentNode.id;
     self.__notesList = self.__deleteNote(self.__notesList, id);
-    self.__saveStorage(self.__STORAGE_KEY, self.__notesList);
+    self.__storage.saveStorage(self.__notesList);
     form.notesWrap.removeChild(event.target.parentNode);
   }
 
@@ -132,7 +179,7 @@ Notes.prototype.__handlers = function(form) {
       'text': textValue
     };
     self.__notesList = self.__editNote(self.__notesList, id, newNote);
-    self.__saveStorage(self.__STORAGE_KEY, self.__notesList);
+    self.__storage.saveStorage(self.__notesList);
   }
 
   function handleSearch() {
@@ -165,7 +212,7 @@ Notes.prototype.__handlers = function(form) {
     }
   });
 
-  window.addEventListener('storage', handleStorage, false);
+  this.__storage.listenerStorage(handleStorage);
 };
 
 
@@ -215,15 +262,59 @@ Notes.prototype.__clearNotes = function(notesWrap) {
  * @param {!Object} itemParam
  */
 Notes.prototype.__createNodeItem = function(itemParam) {
-  var item = document.createElement('li');
-  item.className = 'notes_item';
-  item.setAttribute('id', itemParam.id);
-  item.innerHTML = '' +
-      '<div class="notes_item_name">' + itemParam.name + '</div>' +
-      '<hr class="separat">' +
-      '<div class="notes_item_text">' + itemParam.text + '</div>' +
-      '<button class="icon-trash notes_btn btn_delete" id="note_delete"></button>' +
-      '<button class="icon-pencil notes_btn btn_edit" id="note_edit"></button>';
+  var self = this;
+  var nodeArray = [
+    {
+      'tagName': 'li',
+      'prop': {
+        'className': 'notes_item',
+        'id': itemParam.id
+      },
+      children: [
+        {
+          'tagName': 'div',
+          'prop': {
+            'className': 'notes_item_name',
+            'innerHTML': itemParam.name
+          }
+        },
+        {
+          'tagName': 'hr',
+          'prop': {
+            'className': 'separat'
+          }
+        },
+        {
+          'tagName': 'div',
+          'prop': {
+            'className': 'notes_item_text',
+            'innerHTML': itemParam.text
+          }
+        },
+        {
+          'tagName': 'button',
+          'prop': {
+            'className': 'icon-trash notes_btn btn_delete',
+            'id': 'note_delete'
+          }
+        },
+        {
+          'tagName': 'button',
+          'prop': {
+            'className': 'icon-pencil notes_btn btn_edit',
+            'id': 'note_edit'
+          }
+        }
+      ]
+    }
+  ];
+
+  var item = self.__createNode(nodeArray['tagName'], nodeArray['prop']);
+  if (nodeArray['children'].length) {
+    nodeArray['children'].forEach(function(child) {
+      item.appendChild(self.__createNode(child['tagName'], child['prop']));
+    })
+  }
   return item;
 };
 
@@ -235,12 +326,9 @@ Notes.prototype.__createNodeItem = function(itemParam) {
  */
 Notes.prototype.__createNode = function(tag, params) {
   var node = document.createElement(tag);
-  node.className = params.class || '';
-  node.id = params.id;
-  node.innerHTML = params.html || '';
-  node.type = params.type || '';
-  node.name = params.name || '';
-  node.value = params.value || '';
+  Object.keys(params).forEach(function(item) {
+    node[item] = params[item];
+  });
   return node;
 };
 
@@ -299,34 +387,5 @@ Notes.prototype.__generateID = function() {
   return '' + Math.random().toString(36).substr(2, 9) + '';
 };
 
-
-/**
- * @param {!string} key
- * @param {!Object} payload
- */
-Notes.prototype.__saveStorage = function(key, payload) {
-  localStorage.setItem(key, JSON.stringify(payload));
-};
-
-
-/**
- * @param {!string} key
- * @return {Array}
- */
-Notes.prototype.__restoreData = function(key) {
-  var data = localStorage.getItem(key);
-  if (data) {
-    return JSON.parse(data)
-  }
-  return [];
-};
-
-
-/**
- * @param {!string} key
- */
-Notes.prototype.__removeData = function(key) {
-  localStorage.removeItem(key);
-};
 
 new Notes();
